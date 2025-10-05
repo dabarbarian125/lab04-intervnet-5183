@@ -29,6 +29,7 @@
           "contentVersion": "1.0.0.0",
           "parameters": {
             "alias": { "type": "string" },
+            "expressionEvaluationOptions": { "scope": "inner" },
             "location": { "type": "string" },
             "deployBastion": { "type": "bool" }
           },
