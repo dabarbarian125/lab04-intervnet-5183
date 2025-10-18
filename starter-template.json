@@ -1,0 +1,242 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "alias": {
+      "type": "string",
+      "metadata": { "description": "Short alias, e.g., profp" }
+    },
+    "adminUsername": {
+      "type": "string",
+      "defaultValue": "student"
+    },
+    "adminPassword": {
+      "type": "secureString",
+      "metadata": { "description": "VM admin password (entered in Portal only; do not commit)" }
+    },
+    "deployBastion": {
+      "type": "bool",
+      "defaultValue": true
+    }
+  },
+  "variables": {
+    "location": "[resourceGroup().location]",
+    "vnetCoreName": "[concat('vnet-core-', parameters('alias'))]",
+    "vnetMfgName": "[concat('vnet-mfg-', parameters('alias'))]",
+    "snetWebName": "snet-web",
+    "snetMfgName": "snet-mfg",
+    "bastionSubnetName": "AzureBastionSubnet",
+    "vm1Name": "[concat('vm1-', parameters('alias'))]",
+    "vmMfgName": "[concat('vm-mfg-', parameters('alias'))]",
+    "nicVm1Name": "[concat('nic-vm1-', parameters('alias'))]",
+    "nicVmMfgName": "[concat('nic-vm-mfg-', parameters('alias'))]",
+    "pipBastionName": "[concat('pip-bastion-', parameters('alias'))]",
+    "bastionName": "[concat('bastion-', parameters('alias'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2024-07-01",
+      "name": "[variables('vnetCoreName')]",
+      "location": "[variables('location')]",
+      "tags": { "course": "CISY5183", "lab": "4", "owner": "[parameters('alias')]" },
+      "properties": {
+        "addressSpace": { "addressPrefixes": [ "10.20.0.0/16" ] },
+        "subnets": [
+          { "name": "[variables('snetWebName')]", "properties": { "addressPrefix": "10.20.10.0/24" } }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks/subnets",
+      "apiVersion": "2024-07-01",
+      "name": "[concat(variables('vnetCoreName'), '/', variables('bastionSubnetName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetCoreName'))]"
+      ],
+       "properties": {
+        "addressPrefix": "10.20.255.0/26"
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2024-07-01",
+      "name": "[variables('vnetMfgName')]",
+      "location": "[variables('location')]",
+      "tags": { "course": "CISY5183", "lab": "4", "owner": "[parameters('alias')]" },
+      "properties": {
+        "addressSpace": { "addressPrefixes": [ "172.16.0.0/16" ] },
+        "subnets": [
+          { "name": "[variables('snetMfgName')]", "properties": { "addressPrefix": "172.16.0.0/24" } }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2024-07-01",
+      "name": "[variables('nicVm1Name')]",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetCoreName'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetCoreName'), variables('snetWebName'))]"
+              },
+              "privateIPAllocationMethod": "Dynamic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2024-07-01",
+      "name": "[variables('nicVmMfgName')]",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetMfgName'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetMfgName'), variables('snetMfgName'))]"
+              },
+              "privateIPAllocationMethod": "Dynamic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2024-11-01",
+      "name": "[variables('vm1Name')]",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('nicVm1Name'))]"
+      ],
+      "properties": {
+        "hardwareProfile": { "vmSize": "Standard_B1s" },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "canonical",
+            "offer": "0001-com-ubuntu-server-jammy",
+            "sku": "22_04-lts",
+            "version": "latest"
+          },
+          "osDisk": {
+            "osType": "Linux",
+            "createOption": "FromImage",
+            "managedDisk": { "storageAccountType": "Standard_LRS" },
+            "diskSizeGB": 30
+          }
+        },
+        "osProfile": {
+          "computerName": "[variables('vm1Name')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]",
+          "linuxConfiguration": {
+            "disablePasswordAuthentication": false,
+            "provisionVMAgent": true
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            { "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nicVm1Name'))]" }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2024-11-01",
+      "name": "[variables('vmMfgName')]",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('nicVmMfgName'))]"
+      ],
+      "properties": {
+        "hardwareProfile": { "vmSize": "Standard_B1s" },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "canonical",
+            "offer": "0001-com-ubuntu-server-jammy",
+            "sku": "22_04-lts",
+            "version": "latest"
+          },
+          "osDisk": {
+            "osType": "Linux",
+            "createOption": "FromImage",
+            "managedDisk": { "storageAccountType": "Standard_LRS" },
+            "diskSizeGB": 30
+          }
+        },
+        "osProfile": {
+          "computerName": "[variables('vmMfgName')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]",
+          "linuxConfiguration": {
+            "disablePasswordAuthentication": false,
+            "provisionVMAgent": true
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            { "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nicVmMfgName'))]" }
+          ]
+        }
+      }
+    },
+    {
+      "condition": "[parameters('deployBastion')]",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2024-07-01",
+      "name": "[variables('pipBastionName')]",
+      "location": "[variables('location')]",
+      "sku": { "name": "Standard", "tier": "Regional" },
+      "properties": { "publicIPAllocationMethod": "Static" }
+    },
+    {
+      "condition": "[parameters('deployBastion')]",
+      "type": "Microsoft.Network/bastionHosts",
+      "apiVersion": "2024-07-01",
+      "name": "[variables('bastionName')]",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('pipBastionName'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetCoreName'), variables('bastionSubnetName'))]"
+      ],
+      "sku": { "name": "Standard" },
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "IpConf",
+            "properties": {
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('pipBastionName'))]"
+              },
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetCoreName'), variables('bastionSubnetName'))]"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "outputs": {
+    "vnetCore": { "type": "string", "value": "[variables('vnetCoreName')]" },
+    "vnetMfg": { "type": "string", "value": "[variables('vnetMfgName')]" },
+    "vm1": { "type": "string", "value": "[variables('vm1Name')]" },
+    "vmMfg": { "type": "string", "value": "[variables('vmMfgName')]" }
+  }
+}
+
